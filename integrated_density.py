@@ -165,7 +165,7 @@ def perform_optimization(dims_to_optimize, fixed_dims, dimension_min, dimension_
 
     return result, tested_dimensions
 
-def create_optimization_plots(results, candies_per_package, sampled_dimensions, volumes, densities, individual_masses, package_length, package_width, package_height, total_package_masses):
+def create_optimization_plots(results, candies_per_package, sampled_dimensions, volumes, densities, individual_masses, package_length, package_width, package_height, total_package_masses, fix_dim1, fix_dim2, fix_dim3):
     # Calculate package masses
     package_masses = np.sum(individual_masses.reshape(-1, candies_per_package), axis=1)
 
@@ -175,13 +175,29 @@ def create_optimization_plots(results, candies_per_package, sampled_dimensions, 
     target_package_spec = declared_package_mass + 0.5 * std_dev_package_mass
     lower_package_spec = results['lower_spec'] * candies_per_package
     upper_package_spec = target_package_spec + (target_package_spec - lower_package_spec)
+    
 
-    fig = make_subplots(
-            rows=2, cols=2, 
+    # Determine which dimensions are present in the results
+    present_dims = [i for i, fix in enumerate([fix_dim1, fix_dim2, fix_dim3]) if not fix]
+    
+    num_present_dims = len(present_dims)
+
+    # Create subplots based on the number of present dimensions
+    if num_present_dims == 3:
+        fig = make_subplots(
+            rows=2, cols=2,
+            specs=[[{"type": "xy"}, {"type": "scene"}], [{"type": "xy"}, {"type": "scatter3d"}]],
+            subplot_titles=("Package Mass Distribution", "Dimensions (3D)", "Generated Dimension Box Plots", "Generated Mass vs. Density vs. Volume"),
+            vertical_spacing=0.2
+        )
+    else:
+        fig = make_subplots(
+            rows=2, cols=2,
             specs=[[{"type": "xy"}, {"type": "xy"}], [{"type": "xy"}, {"type": "scatter3d"}]],
             subplot_titles=("Package Mass Distribution", "Dimensions", "Generated Dimension Box Plots", "Generated Mass vs. Density vs. Volume"),
             vertical_spacing=0.2
         )
+
 
     # Package Mass distribution
     fig.add_trace(go.Histogram(x=total_package_masses, name="Package Mass"), row=1, col=1)
@@ -207,38 +223,106 @@ def create_optimization_plots(results, candies_per_package, sampled_dimensions, 
             showlegend=False
         ), row=1, col=1)
 
+    
     # Dimensions plot
-    if 'tested_dimensions' in results:
-        # Plot for optimization results
+    if num_present_dims > 0:
         tested_dimensions = np.array(results['tested_dimensions'])
         color_range = np.array(range(len(tested_dimensions)))
 
-        fig.add_trace(go.Scatter(x=tested_dimensions[:, 0], y=tested_dimensions[:, 1], 
-                                mode='markers', marker=dict(color=color_range, 
-                                                            colorscale='Viridis', 
-                                                            size=5), 
-                                name="Tested Dimensions"), row=1, col=2)
+        if num_present_dims == 1:
+            # 1D scatter plot for one present dimension
+            dim = present_dims[0]
+            fig.add_trace(go.Scatter(
+                x=tested_dimensions,
+                y=[0] * len(tested_dimensions),
+                mode='markers',
+                marker=dict(color=color_range, colorscale='Viridis', size=5),
+                name=f"Tested Dimension {dim+1}"
+            ), row=1, col=2)
+            
+            fig.add_trace(go.Scatter(
+                x=[results['optimized_dimensions'][dim]],
+                y=[0],
+                mode='markers',
+                marker_symbol='star',
+                marker_size=10,
+                marker_color='red',
+                name=f"Optimized Dimension {dim+1}"
+            ), row=1, col=2)
+            
+            fig.update_xaxes(title_text=f"Dimension {dim+1}", row=1, col=2)
+            fig.update_yaxes(title_text="", showticklabels=False, row=1, col=2)
 
-        fig.add_trace(go.Scatter(x=[results['optimized_dimensions'][0]], 
-                                y=[results['optimized_dimensions'][1]], 
-                                mode='markers', marker_symbol='star', 
-                                marker_size=10, marker_color='red', 
-                                name="Optimized"), row=1, col=2)
-        
-        fig.update_xaxes(title_text="Dimension 1", row=1, col=2)
-        fig.update_yaxes(title_text="Dimension 2", row=1, col=2)
+        elif num_present_dims == 2:
+            # 2D scatter plot for two present dimensions
+            dim1, dim2 = present_dims
+            
+            fig.add_trace(go.Scatter(
+                x=tested_dimensions[:, dim1],
+                y=tested_dimensions[:, dim2],
+                mode='markers',
+                marker=dict(color=color_range, colorscale='Viridis', size=5),
+                name=f"Tested Dimensions {dim1+1} & {dim2+1}"
+            ), row=1, col=2)
+            
+            fig.add_trace(go.Scatter(
+                x=[results['optimized_dimensions'][dim1]],
+                y=[results['optimized_dimensions'][dim2]],
+                mode='markers',
+                marker_symbol='star',
+                marker_size=10,
+                marker_color='red',
+                name=f"Optimized Dimensions {dim1+1} & {dim2+1}"
+            ), row=1, col=2)
+            
+            fig.update_xaxes(title_text=f"Dimension {dim1+1}", row=1, col=2)
+            fig.update_yaxes(title_text=f"Dimension {dim2+1}", row=1, col=2)
+
+        elif num_present_dims == 3:
+            # 3D scatter plot for three present dimensions
+            fig.add_trace(go.Scatter3d(
+                x=tested_dimensions[:, 0],
+                y=tested_dimensions[:, 1],
+                z=tested_dimensions[:, 2],
+                mode='markers',
+                marker=dict(color=color_range, colorscale='Viridis', size=3),
+                name="Tested Dimensions 1, 2 & 3"
+            ), row=1, col=2)
+            
+            fig.add_trace(go.Scatter3d(
+                x=[results['optimized_dimensions'][0]],
+                y=[results['optimized_dimensions'][1]],
+                z=[results['optimized_dimensions'][2]],
+                mode='markers',
+                marker_symbol='diamond',
+                marker_size=5,
+                marker_color='red',
+                name="Optimized Dimensions 1, 2 & 3"
+            ), row=1, col=2)
+            
+            fig.update_scenes(
+                xaxis_title="Dimension 1",
+                yaxis_title="Dimension 2",
+                zaxis_title="Dimension 3",
+                row=1, col=2
+            )
     else:
-        # Plot for fixed dimensions
-        fixed_dimensions = results['optimized_dimensions']
-        fig.add_trace(go.Scatter(x=[fixed_dimensions[0]], 
-                                y=[fixed_dimensions[1]], 
-                                mode='markers', marker_symbol='star', 
-                                marker_size=10, marker_color='red', 
-                                name="Fixed Dimensions"), row=1, col=2)
+        # Plot for all fixed dimensions
+        fig.add_trace(go.Scatter(
+            x=[results['optimized_dimensions'][0]],
+            y=[results['optimized_dimensions'][1]],
+            mode='markers',
+            marker_symbol='star',
+            marker_size=10,
+            marker_color='red',
+            name="Fixed Dimensions"
+        ), row=1, col=2)
         
         fig.update_xaxes(title_text="Dimension 1", row=1, col=2)
         fig.update_yaxes(title_text="Dimension 2", row=1, col=2)
         fig.update_layout(xaxis2=dict(range=[1.85, 2.1]), yaxis2=dict(range=[1.85, 2.1]))
+
+
 
     # Dimension box plots
     piece_colors = ['rgb(31, 119, 180)', 'rgb(255, 127, 14)', 'rgb(44, 160, 44)']
@@ -344,7 +428,6 @@ def create_optimization_plots(results, candies_per_package, sampled_dimensions, 
 
     return fig
 
-
 # Function to create a more subtle color gradient
 def create_color_gradient(hex_color, n):
     rgb = tuple(int(hex_color[1:][i:i+2], 16) for i in (0, 2, 4))
@@ -354,6 +437,8 @@ def create_color_gradient(hex_color, n):
         max(0, hsv[1] - 0.1 * i),  # Reduce saturation more gradually
         min(1, hsv[2] + 0.1 * i)   # Increase brightness more gradually
     ) for i in range(n)]
+
+
 
 # Define color map to match the image
 color_map = {
@@ -757,14 +842,14 @@ def optimizer_page():
         
         <div class="graph-explanation">
         <strong style="color: #ff6347;">Package Simulation</strong><br>
-        <p>The simulation accounts for multiple candies per package and their arrangement:</p>
+        <p>The simulation accounts for multiple pieces per package and their arrangement:</p>
         <ul>
-            <li>User defines the number of candies per package.</li>
+            <li>User defines the number of pieces per package.</li>
             <li>Specs are adjusted to reflect the total package weight.</li>
-            <li>Simulated masses represent the total weight of all candies in a package.</li>
-            <li>Piece width (Dimension 3) contributes to the package length.</li>
-            <li>Piece length (Dimension 1) contributes to the package width.</li>
-            <li>Piece height (Dimension 2) contributes to the package height.</li>
+            <li>Simulated masses represent the total weight of all pieces in a package.</li>
+            <li>Piece height (Dimension 3) contributes to the package length.</li>
+            <li>Average of the max piece length (Dimension 1) contributes to the package width.</li>
+            <li>Average of the max piece width (Dimension 2) contributes to the package height.</li>
         </ul>
         <p>This arrangement helps in visualizing how individual pieces impact the overall package dimensions.</p>
         </div>
@@ -786,7 +871,6 @@ def optimizer_page():
             <li>Locking dimensions gives more flexibility in targeting specific product attributes.</li>
             <li>Without locking, the algorithm iterates through all dimensions at its own pace.</li>
             <li>Locking allows users to optimize around known constraints or preferences.</li>
-            <li>This feature is useful when certain dimensions are critical for packaging or manufacturing processes.</li>
         </ul>
         </div>
                     
@@ -839,11 +923,11 @@ def optimizer_page():
 
         <div class="graph-explanation">
         <strong style="color: #ff6347;">Package Simulation</strong><br>
-        <p>The simulation also accounts for multiple candies per package:</p>
+        <p>The simulation also accounts for multiple pieces per package:</p>
         <ul>
-            <li>User defines the number of candies per package.</li>
+            <li>User defines the number of pieces per package.</li>
             <li>Specs are adjusted to reflect the total package weight.</li>
-            <li>Simulated masses represent the total weight of all candies in a package.</li>
+            <li>Simulated masses represent the total weight of all pieces in a package.</li>
         </ul>
         </div>
                     
@@ -852,7 +936,7 @@ def optimizer_page():
             <p>The specification limits are:</p>
             <ul>
                 <li>Lower Spec Limit (LSL) = MAV * Number of Pieces</li>
-                <li>Declared Package Mass = Declared Mass per Candy * Number of Pieces</li>
+                <li>Declared Package Mass = Declared Mass per Piece * Number of Pieces</li>
                 <li>Target Package Spec = Declared Package Mass + 0.5σ of Package Mass</li>
                 <li>Upper Spec Limit (USL) = Target Package Spec + (Target Package Spec - LSL)</li>
             </ul>
@@ -868,7 +952,7 @@ def optimizer_page():
         </div>
         """, unsafe_allow_html=True)
 
-    # Add number of candies per package input
+    # Add number of pieces per package input
     candies_per_package = st.sidebar.number_input('Number of Pieces per Package', min_value=1, max_value=100, value=12, step=1)
     density_center = st.sidebar.number_input('Density Center', value=density_center, format="%.6f")
     density_variation = st.sidebar.number_input('Density Variation', value=density_variation, format="%.6f")
@@ -908,9 +992,13 @@ def optimizer_page():
 
     # Check if all dimensions are fixed
     all_dimensions_fixed = fix_dim1 and fix_dim2 and fix_dim3
+    num_optimized_dims = sum([not fix_dim1, not fix_dim2, not fix_dim3])
+    # Add a button to navigate to the optimizer page
+    
 
     if all_dimensions_fixed:
         st.sidebar.write("All dimensions are fixed. You can run a Monte Carlo simulation with these dimensions.")
+        
         if st.sidebar.button("Run Monte Carlo Simulation"):
             # Perform Monte Carlo simulation with fixed dimensions
             fixed_dimensions = np.array([dim1, dim2, dim3])
@@ -944,7 +1032,8 @@ def optimizer_page():
                 package_length,
                 package_width,
                 package_height,
-                total_package_masses
+                total_package_masses,
+                fix_dim1, fix_dim2, fix_dim3 
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1002,6 +1091,7 @@ def optimizer_page():
                     f"</div></div>",
                     unsafe_allow_html=True
                 )
+            
 
             with metrics_col1:
                 st.metric("Out of Spec", f"{within_spec * 100:.2f}%")
@@ -1140,7 +1230,8 @@ def optimizer_page():
                     package_length,
                     package_width,
                     package_height,
-                    total_package_masses
+                    total_package_masses,
+                    fix_dim1, fix_dim2, fix_dim3 
                 )
                 
                 # Plot the figure
@@ -1253,12 +1344,18 @@ def optimizer_page():
                     })
                     st.write(f"Displaying {len(sample_data)} rows out of {num_simulations} total rows")
                     st.dataframe(sample_data)
+
+    if st.sidebar.button("Go to Density"):
+        st.session_state['page'] = 'dashboard'
+        st.rerun()
+                    
                 
 
         
 # Main app logic
 def main():
-    st.set_page_config(layout="wide")
+    ### Streamlit layout ###
+    st.set_page_config(page_title='Density',layout='wide')
 
     # Initialize session state for page navigation if not already set
     if 'page' not in st.session_state:
